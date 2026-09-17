@@ -26,11 +26,22 @@ import {
   CalendarDays,
   HeartPulse,
   Users,
+  Trash2,
+  UserX,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const AccountScreen: React.FC = () => {
-  const { userProfile, role, isAdmin, logout, updateUserProfileData, changeAccountPassword, sendPasswordResetLink } =
-    useAuth();
+  const {
+    userProfile,
+    role,
+    isAdmin,
+    logout,
+    deleteMyAccount,
+    updateUserProfileData,
+    changeAccountPassword,
+    sendPasswordResetLink,
+  } = useAuth();
   const { nurses, machines, settings, showToast, updateNurse } = useHemo();
   const { currentThemeConfig } = useTheme();
 
@@ -58,6 +69,12 @@ export const AccountScreen: React.FC = () => {
 
   // Logout confirm modal state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Delete My Account modal state
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   if (!userProfile) {
     return (
@@ -166,6 +183,26 @@ export const AccountScreen: React.FC = () => {
     }
   };
 
+  // Handle Delete My Own Account
+  const handleDeleteMyAccount = async () => {
+    if (deleteConfirmText.trim().toUpperCase() !== 'HAPUS') {
+      setDeleteAccountError('Harap ketik "HAPUS" dengan tepat untuk mengonfirmasi.');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      await deleteMyAccount();
+      setShowDeleteAccountModal(false);
+      showToast('Akun Anda berhasil dihapus dari sistem HemoShift HD.', 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDeleteAccountError(msg || 'Gagal menghapus akun.');
+      setIsDeletingAccount(false);
+    }
+  };
+
   const linkedNurse = nurses.find((n) => n.id === userProfile.nurseId);
 
   return (
@@ -209,10 +246,22 @@ export const AccountScreen: React.FC = () => {
         <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 font-bold text-xs transition-colors min-h-[40px] cursor-pointer"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors min-h-[40px] cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Keluar Akun</span>
+          </button>
+          <button
+            onClick={() => {
+              setDeleteConfirmText('');
+              setDeleteAccountError(null);
+              setShowDeleteAccountModal(true);
+            }}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 font-bold text-xs transition-colors min-h-[40px] cursor-pointer"
+            title="Hapus akun saya secara permanen dari sistem"
+          >
+            <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+            <span>Hapus Akun</span>
           </button>
         </div>
       </div>
@@ -499,6 +548,29 @@ export const AccountScreen: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Zona Tindakan Akun & Hapus Akun Mandiri */}
+          <div className="bg-rose-50/50 dark:bg-rose-950/20 rounded-3xl border border-rose-200/80 dark:border-rose-900/40 p-5 shadow-xs text-xs space-y-3">
+            <div className="flex items-center gap-2 font-bold text-rose-900 dark:text-rose-200">
+              <UserX className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <span>Tindakan Akun & Penghapusan</span>
+            </div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              Jika Anda ingin menutup akun atau tidak lagi bertugas di unit hemodialisa ini, Anda dapat menghapus data login dan profil Anda secara permanen dari server.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmText('');
+                setDeleteAccountError(null);
+                setShowDeleteAccountModal(true);
+              }}
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-white dark:bg-slate-900 hover:bg-rose-100/80 dark:hover:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-bold text-xs transition-all shadow-xs active:scale-98 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+              <span>Hapus Akun Saya</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -598,6 +670,94 @@ export const AccountScreen: React.FC = () => {
                 className="flex-1 py-2.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-sm"
               >
                 Ya, Keluar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete My Account Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-rose-200 dark:border-rose-900/60 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-800">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                  Hapus Akun Saya Permanen
+                </h4>
+                <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                  Tindakan ini tidak dapat dibatalkan
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-xs text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+              <p>
+                Akun <strong>{userProfile.displayName}</strong> (<em>{userProfile.email}</em>) akan dihapus secara permanen dari basis data sistem HemoShift HD.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+                <li>Anda tidak dapat login lagi menggunakan akun ini.</li>
+                <li>Tautan akun dengan jadwal dinas hemodialisa akan dilepas.</li>
+                <li>Semua data kredensial login akun akan dibersihkan dari server.</li>
+              </ul>
+            </div>
+
+            {deleteAccountError && (
+              <div className="p-3 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-200 text-xs border border-rose-300 dark:border-rose-800 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{deleteAccountError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Ketik <span className="font-mono text-rose-600 dark:text-rose-400 font-extrabold">HAPUS</span> untuk konfirmasi:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => {
+                  setDeleteConfirmText(e.target.value);
+                  setDeleteAccountError(null);
+                }}
+                placeholder='Ketik "HAPUS"'
+                className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm font-mono tracking-wider focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingAccount}
+                onClick={() => {
+                  setShowDeleteAccountModal(false);
+                  setDeleteConfirmText('');
+                  setDeleteAccountError(null);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'HAPUS'}
+                onClick={handleDeleteMyAccount}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isDeletingAccount ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Menghapus...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Ya, Hapus Akun</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

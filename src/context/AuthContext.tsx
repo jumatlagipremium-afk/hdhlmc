@@ -10,6 +10,7 @@ import {
   updatePassword as updateFirebasePassword,
   sendPasswordResetEmail as sendFirebasePasswordResetEmail,
   getAuth,
+  deleteUser,
 } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
 import {
@@ -59,6 +60,7 @@ interface AuthContextType {
   updateUserProfileData: (data: Partial<UserProfile>) => Promise<void>;
   changeAccountPassword: (newPassword: string) => Promise<void>;
   sendPasswordResetLink: (email: string) => Promise<void>;
+  deleteMyAccount: () => Promise<void>;
   getAllRegisteredAccounts: () => Promise<RegisteredAccountSummary[]>;
   adminUpdateAccountRole: (email: string, newRole: UserRole) => Promise<void>;
   adminResetUserPassword: (email: string, newPassword: string) => Promise<void>;
@@ -1228,6 +1230,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(filtered));
   };
 
+  // Self-Account Deletion Function
+  const deleteMyAccount = async () => {
+    const cleanEmail = (user?.email || userProfile?.email || '').trim().toLowerCase();
+    const uid = user?.uid || userProfile?.uid;
+
+    if (!cleanEmail && !uid) {
+      throw new Error('Tidak ada akun yang sedang aktif untuk dihapus.');
+    }
+
+    if (cleanEmail === 'emhaprojectart@gmail.com') {
+      throw new Error('Akun Super Administrator Utama dilindungi sistem dan tidak dapat dihapus.');
+    }
+
+    // 1. Delete from Firestore registered_accounts
+    if (cleanEmail) {
+      const encoded = encodeEmailKey(cleanEmail);
+      try {
+        await deleteDoc(doc(db, 'registered_accounts', encoded));
+        await deleteDoc(doc(db, 'registered_accounts', cleanEmail)).catch(() => {});
+      } catch (e) {
+        console.warn('Firestore delete registered_accounts error:', e);
+      }
+    }
+
+    // 2. Delete from Firestore users collection
+    try {
+      if (uid) {
+        await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+      }
+      if (cleanEmail) {
+        const userSnap = await getDocs(collection(db, 'users'));
+        userSnap.forEach((d) => {
+          const data = d.data();
+          if (data.email && data.email.toLowerCase() === cleanEmail) {
+            deleteDoc(doc(db, 'users', d.id)).catch(() => {});
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Firestore delete users doc error:', e);
+    }
+
+    // 3. Delete from localStorage registered accounts
+    try {
+      const local = getStoredAccounts();
+      const filtered = local.filter((a) => {
+        const matchEmail = cleanEmail && a.email.toLowerCase() === cleanEmail;
+        const matchUid = uid && a.uid === uid;
+        return !matchEmail && !matchUid;
+      });
+      localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('LocalStorage accounts cleanup error:', e);
+    }
+
+    // 4. Delete from Firebase Auth if authenticated with Firebase Auth
+    if (auth.currentUser) {
+      try {
+        await deleteUser(auth.currentUser);
+      } catch (fbErr: unknown) {
+        console.warn('Firebase Auth deleteUser notice (account purged locally):', fbErr);
+      }
+    }
+
+    // 5. Clean local active session
+    try {
+      localStorage.removeItem('hemo_auth_user_v1');
+      localStorage.removeItem('hemo_user_profile_v1');
+      localStorage.removeItem('hemo_local_user_v1');
+      localStorage.removeItem('hemo_local_profile_v1');
+      localStorage.removeItem('hemo_guest_mode');
+    } catch {}
+
+    // 6. Sign out
+    try {
+      await signOut(auth);
+    } catch {}
+
+    setUser(null);
+    setUserProfile(null);
+  };
+
   const activeEmail = (user?.email || userProfile?.email || '').trim().toLowerCase();
   const isPermAdmin = isPermanentAdminEmail(activeEmail);
   const currentRole: UserRole | 'guest' = isPermAdmin
@@ -1258,6 +1342,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateUserProfileData,
         changeAccountPassword,
         sendPasswordResetLink,
+        deleteMyAccount,
         getAllRegisteredAccounts,
         adminUpdateAccountRole,
         adminResetUserPassword,
